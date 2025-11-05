@@ -1,5 +1,8 @@
 import cv2
 import numpy as np
+# from pyembroidery import EmbPattern, write_dst, write_pec, write_pes, write_exp, write_vp3, write_jef, write_u01
+# from pyembroidery import write_csv, write_json, write_txt, write_gcode, write_xxx, write_tbf, write_svg, write_png
+# from pyembroidery import EmbConstant
 from pyembroidery import *
 from pathlib import Path
 
@@ -16,7 +19,7 @@ if image is None:
     raise FileNotFoundError("Cannot read image file.")
 
 # Resize for smaller stitch count
-scale = 512 / max(image.shape[:2])
+scale = 400 / max(image.shape[:2])
 image = cv2.resize(image, (0, 0), fx=scale, fy=scale)
 
 # Convert to LAB for better color clustering
@@ -31,7 +34,7 @@ _, labels, centers = cv2.kmeans(
     None,
     (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0),
     10,
-    cv2.KMEANS_RANDOM_CENTERS
+    cv2.KMEANS_RANDOM_CENTERS,
 )
 
 segmented = centers[labels.flatten()].reshape(image.shape)
@@ -51,7 +54,9 @@ for i, color in enumerate(centers.astype(np.uint8)):
     color_bgr = cv2.cvtColor(np.uint8([[color]]), cv2.COLOR_LAB2BGR)[0][0]
     print(f"Color {i+1}: {color_bgr} with {len(contours)} contours")
 
+    # pattern.add_color_change()
     pattern.color_change()
+    # pattern.add_stitch_relative(EmbConstant.COLOR_CHANGE, 0, 0)
 
     for cnt in contours:
         if cv2.contourArea(cnt) < 30:  # skip small details
@@ -70,11 +75,16 @@ for i, color in enumerate(centers.astype(np.uint8)):
                 if first:
                     first = False
                     pattern.move()
+                    # pattern.add_stitch_relative(EmbConstant.JUMP, 0, 0)
+
                 pattern.stitch_abs(row_pts[0], yy)
                 pattern.stitch_abs(row_pts[-1], yy)
+                # pattern.add_stitch_absolute(EmbConstant.STITCH, row_pts[0], yy)
+                # pattern.add_stitch_absolute(EmbConstant.STITCH, row_pts[-1], yy)
 
 # === Step 4. Save as .DST ===
 pattern.end()
+# pattern.add_stitch_relative(EmbConstant.END, 0, 0)
 
 write_dst(pattern, str(path.with_suffix(".dst")))
 write_pec(pattern, str(path.with_suffix(".pec")))
