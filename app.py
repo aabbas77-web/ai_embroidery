@@ -1,95 +1,101 @@
 import cv2
 import numpy as np
+from skimage.morphology import skeletonize
 from pyembroidery import *
 from pathlib import Path
 
 # === Parameters ===
-INPUT_IMAGE = "logo.png"
-STITCH_SPACING = 2.0  # mm equivalent in stitch units
-COLOR_TOLERANCE = 20  # for color segmentation
+INPUT_IMAGE = "logo.bmp"
+THRESHOLD = 127
+STITCH_SPACING = 1.0  # distance between stitches
+SATIN_WIDTH = 4.0     # width of satin band
+DESIGN_WIDTH = 640
 
 path = Path(INPUT_IMAGE)
 
-# === Step 1. Load and preprocess image ===
-image = cv2.imread(INPUT_IMAGE)
-if image is None:
+# === Step 1. Load and preprocess ===
+img = cv2.imread(INPUT_IMAGE)
+if img is None:
     raise FileNotFoundError("Cannot read image file.")
 
 # Resize for smaller stitch count
-scale = 512 / max(image.shape[:2])
-image = cv2.resize(image, (0, 0), fx=scale, fy=scale)
+scale = DESIGN_WIDTH / max(img.shape[:2])
+img = cv2.resize(img, (0, 0), fx=scale, fy=scale)
 
-# Convert to LAB for better color clustering
-lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-pixels = lab.reshape(-1, 3)
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+gray = cv2.GaussianBlur(gray, (3, 3), 0)
+_, mask = cv2.threshold(gray, THRESHOLD, 255, cv2.THRESH_BINARY_INV)
 
-# === Step 2. Cluster colors (segment the image) ===
-n_colors = 8  # adjust as needed
-_, labels, centers = cv2.kmeans(
-    np.float32(pixels),
-    n_colors,
-    None,
-    (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0),
-    10,
-    cv2.KMEANS_RANDOM_CENTERS
-)
+cv2.imwrite("gray.png", gray)
+cv2.imwrite("mask.png", mask)
 
-segmented = centers[labels.flatten()].reshape(image.shape)
-segmented = cv2.convertScaleAbs(segmented)
+# === Step 2. Extract contours ===
+contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-# === Step 3. Extract contours per color region ===
 pattern = EmbPattern()
 
-for i, color in enumerate(centers.astype(np.uint8)):
-    mask = cv2.inRange(segmented, color - COLOR_TOLERANCE, color + COLOR_TOLERANCE)
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    if not contours:
+for ci, contour in enumerate(contours):
+    if cv2.contourArea(contour) < 100:
         continue
 
-    # Convert LAB color back to BGR for reference
-    color_bgr = cv2.cvtColor(np.uint8([[color]]), cv2.COLOR_LAB2BGR)[0][0]
-    print(f"Color {i+1}: {color_bgr} with {len(contours)} contours")
+    # Create filled mask for the shape
+    shape_mask = np.zeros_like(mask)
+    cv2.drawContours(shape_mask, [contour], -1, 255, 1)
+    cv2.imwrite("shape_mask.png", shape_mask)
+
+    # === Step 3. Skeletonization ===
+    skeleton = skeletonize(shape_mask > 0)
+
+    yx = np.argwhere(skeleton)
+    if len(yx) < 2:
+        continue
 
     pattern.color_change()
+    direction = 1
 
-    for cnt in contours:
-        if cv2.contourArea(cnt) < 30:  # skip small details
+    # === Step 4. Generate satin stitches ===
+    for (y, x) in yx[::int(STITCH_SPACING)]:
+        # Gradient-based perpendicular estimation
+        gx = cv2.Sobel(shape_mask.astype(np.float32), cv2.CV_64F, 1, 0, ksize=3)
+        gy = cv2.Sobel(shape_mask.astype(np.float32), cv2.CV_64F, 0, 1, ksize=3)
+        nx, ny = gx[int(y), int(x)], gy[int(y), int(x)]
+        nlen = np.hypot(nx, ny)
+        if nlen == 0:
             continue
-        cnt = cnt.squeeze()
-        if len(cnt.shape) != 2:
-            continue
+        nx, ny = nx / nlen, ny / nlen
 
-        # Draw stitches in fill pattern
-        first = True
-        x, y, w, h = cv2.boundingRect(cnt)
-        for yy in np.arange(y, y + h, STITCH_SPACING):
-            row_pts = cnt[(cnt[:, 1] >= yy) & (cnt[:, 1] < yy + STITCH_SPACING)]
-            if len(row_pts) > 1:
-                row_pts = np.sort(row_pts[:, 0])
-                if first:
-                    first = False
-                    pattern.move()
-                pattern.stitch_abs(row_pts[0], yy)
-                pattern.stitch_abs(row_pts[-1], yy)
+        # Compute start and end of satin width
+        x1 = x - nx * SATIN_WIDTH / 2
+        y1 = y - ny * SATIN_WIDTH / 2
+        x2 = x + nx * SATIN_WIDTH / 2
+        y2 = y + ny * SATIN_WIDTH / 2
 
-# === Step 4. Save as .DST ===
+        if direction > 0:
+            pattern.stitch_abs(x1, y1)
+            pattern.stitch_abs(x2, y2)
+        else:
+            pattern.stitch_abs(x2, y2)
+            pattern.stitch_abs(x1, y1)
+        direction *= -1  # alternate direction
+
 pattern.end()
 
-write_dst(pattern, str(path.with_suffix(".dst")))
-write_pec(pattern, str(path.with_suffix(".pec")))
-write_pes(pattern, str(path.with_suffix(".pes")))
-write_exp(pattern, str(path.with_suffix(".exp")))
-write_vp3(pattern, str(path.with_suffix(".vp3")))
-write_jef(pattern, str(path.with_suffix(".jef")))
-write_u01(pattern, str(path.with_suffix(".u01")))
-write_csv(pattern, str(path.with_suffix(".csv")))
-# write_json(pattern, str(path.with_suffix(".json")))
-write_txt(pattern, str(path.with_suffix(".txt")))
-write_gcode(pattern, str(path.with_suffix(".gcode")))
-write_xxx(pattern, str(path.with_suffix(".xxx")))
-write_tbf(pattern, str(path.with_suffix(".tbf")))
-write_svg(pattern, str(path.with_suffix(".svg")))
-write_png(pattern, str(path.with_suffix(".png")))
+# Preview
+stitches = np.array(pattern.stitches, dtype=float)
+stitches -= np.min(stitches, axis=0)
+stitches /= np.max(stitches, axis=0)
+canvas = np.ones((DESIGN_WIDTH, DESIGN_WIDTH, 3), np.uint8) * 255
+for i in range(1, len(stitches)):
+    p1 = tuple((stitches[i - 1] * 300).astype(int))
+    p2 = tuple((stitches[i] * 300).astype(int))
+    p1_2d = tuple(p1[:2])
+    p2_2d = tuple(p2[:2])
+    cv2.line(canvas, p1_2d, p2_2d, (0, 0, 0), 1)
+cv2.imshow("Embroidery Preview", canvas)
+cv2.imwrite("preview.png", canvas)
+cv2.waitKey(0)
 
-print(f"✅ Embroidery file saved...")
+# Save Results
+write_dst(pattern, str(path.with_suffix(".dst")))
+write_png(pattern, str(path.with_suffix(".png")))
+print(f"✅ Satin embroidery saved...")
