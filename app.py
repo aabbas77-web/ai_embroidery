@@ -1,99 +1,60 @@
 import cv2
 import numpy as np
-from skimage.morphology import skeletonize
 from pyembroidery import *
 from pathlib import Path
 
-# === Parameters ===
-INPUT_IMAGE = "logo.bmp"
-THRESHOLD = 127
-STITCH_SPACING = 1.0  # distance between stitches
-SATIN_WIDTH = 4.0     # width of satin band
-DESIGN_WIDTH = 640
+# === PARAMETERS ===
+INPUT_IMAGE = "logo0.bmp"
+STITCH_SPACING = 3          # distance between rows (pixels)
+POINT_SPACING = 3           # distance between points in each scan line
+OUTPUT = "fill_contour.dst"
 
 path = Path(INPUT_IMAGE)
 
-# === Step 1. Load and preprocess ===
-img = cv2.imread(INPUT_IMAGE)
-if img is None:
-    raise FileNotFoundError("Cannot read image file.")
+# === Load image and extract contour ===
+img = cv2.imread(INPUT_IMAGE, cv2.IMREAD_GRAYSCALE)
+_, thresh = cv2.threshold(img, 128, 255, cv2.THRESH_BINARY)
 
-# Resize for smaller stitch count
-scale = DESIGN_WIDTH / max(img.shape[:2])
-img = cv2.resize(img, (0, 0), fx=scale, fy=scale)
+contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+cnt = max(contours, key=cv2.contourArea)    # choose largest contour
 
-gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-gray = cv2.GaussianBlur(gray, (3, 3), 0)
-_, mask = cv2.threshold(gray, THRESHOLD, 255, cv2.THRESH_BINARY_INV)
+# Create filled mask
+h, w = img.shape
+mask = np.zeros((h, w), np.uint8)
+cv2.drawContours(mask, [cnt], -1, 255, -1)
 
-cv2.imwrite("gray.png", gray)
-cv2.imwrite("mask.png", mask)
-
-# === Step 2. Extract contours ===
-contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
+# === Prepare Embroidery Pattern ===
 pattern = EmbPattern()
+pattern.color_change()
 
-for ci, contour in enumerate(contours):
-    if cv2.contourArea(contour) < 100:
+# === Generate continuous fill stitches ===
+y_min, y_max = np.min(cnt[:,:,1]), np.max(cnt[:,:,1])
+
+direction = 1  # left→right then right→left
+
+for y in range(y_min, y_max, STITCH_SPACING):
+    row = mask[y]   # 1D row of pixels
+
+    xs = np.where(row == 255)[0]   # all filled pixels on this row
+    if len(xs) < 2:
         continue
 
-    # Create filled mask for the shape
-    shape_mask = np.zeros_like(mask)
-    cv2.drawContours(shape_mask, [contour], -1, 255, 1)
-    cv2.imwrite("shape_mask.png", shape_mask)
+    # Downsample along row
+    xs = xs[::POINT_SPACING]
 
-    # === Step 3. Skeletonization ===
-    skeleton = skeletonize(shape_mask > 0)
+    # Zig-zag direction
+    if direction > 0:
+        xs_sorted = xs
+    else:
+        xs_sorted = xs[::-1]
 
-    yx = np.argwhere(skeleton)
-    if len(yx) < 2:
-        continue
+    for x in xs_sorted:
+        pattern.stitch_abs(int(x), int(y))
 
-    pattern.color_change()
-    direction = 1
+    direction *= -1
 
-    # === Step 4. Generate satin stitches ===
-    for (y, x) in yx[::int(STITCH_SPACING)]:
-        # Gradient-based perpendicular estimation
-        gx = cv2.Sobel(shape_mask.astype(np.float32), cv2.CV_64F, 1, 0, ksize=3)
-        gy = cv2.Sobel(shape_mask.astype(np.float32), cv2.CV_64F, 0, 1, ksize=3)
-        nx, ny = gx[int(y), int(x)], gy[int(y), int(x)]
-        nlen = np.hypot(nx, ny)
-        if nlen == 0:
-            continue
-        nx, ny = nx / nlen, ny / nlen
-
-        # Compute start and end of satin width
-        x1 = x - nx * SATIN_WIDTH / 2
-        y1 = y - ny * SATIN_WIDTH / 2
-        x2 = x + nx * SATIN_WIDTH / 2
-        y2 = y + ny * SATIN_WIDTH / 2
-
-        if direction > 0:
-            pattern.stitch_abs(x1, y1)
-            pattern.stitch_abs(x2, y2)
-        else:
-            pattern.stitch_abs(x2, y2)
-            pattern.stitch_abs(x1, y1)
-        direction *= -1  # alternate direction
-
+# End and save
 pattern.end()
-
-# Preview
-stitches = np.array(pattern.stitches, dtype=float)
-stitches -= np.min(stitches, axis=0)
-stitches /= np.max(stitches, axis=0)
-canvas = np.ones((DESIGN_WIDTH, DESIGN_WIDTH, 3), np.uint8) * 255
-for i in range(1, len(stitches)):
-    p1 = tuple((stitches[i - 1] * 300).astype(int))
-    p2 = tuple((stitches[i] * 300).astype(int))
-    p1_2d = tuple(p1[:2])
-    p2_2d = tuple(p2[:2])
-    cv2.line(canvas, p1_2d, p2_2d, (0, 0, 0), 1)
-cv2.imshow("Embroidery Preview", canvas)
-cv2.imwrite("preview.png", canvas)
-cv2.waitKey(0)
 
 # Save Results
 write_dst(pattern, str(path.with_suffix(".dst")))

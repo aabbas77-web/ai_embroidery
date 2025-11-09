@@ -25,7 +25,7 @@ lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
 pixels = lab.reshape(-1, 3)
 
 # === Step 2. Cluster colors (segment the image) ===
-n_colors = 8  # adjust as needed
+n_colors = 3  # adjust as needed
 _, labels, centers = cv2.kmeans(
     np.float32(pixels),
     n_colors,
@@ -78,19 +78,19 @@ for i, color in enumerate(centers.astype(np.uint8)):
 pattern.end()
 
 # Preview
-stitches = np.array(pattern.stitches, dtype=float)
-stitches -= np.min(stitches, axis=0)
-stitches /= np.max(stitches, axis=0)
-canvas = np.ones((DESIGN_WIDTH, DESIGN_WIDTH, 3), np.uint8) * 255
-for i in range(1, len(stitches)):
-    p1 = tuple((stitches[i - 1] * 300).astype(int))
-    p2 = tuple((stitches[i] * 300).astype(int))
-    p1_2d = tuple(p1[:2])
-    p2_2d = tuple(p2[:2])
-    cv2.line(canvas, p1_2d, p2_2d, (0, 0, 0), 1)
-cv2.imshow("Embroidery Preview", canvas)
-cv2.imwrite("preview.png", canvas)
-cv2.waitKey(0)
+# stitches = np.array(pattern.stitches, dtype=float)
+# stitches -= np.min(stitches, axis=0)
+# stitches /= np.max(stitches, axis=0)
+# canvas = np.ones((DESIGN_WIDTH, DESIGN_WIDTH, 3), np.uint8) * 255
+# for i in range(1, len(stitches)):
+#     p1 = tuple((stitches[i - 1] * 300).astype(int))
+#     p2 = tuple((stitches[i] * 300).astype(int))
+#     p1_2d = tuple(p1[:2])
+#     p2_2d = tuple(p2[:2])
+#     cv2.line(canvas, p1_2d, p2_2d, (0, 0, 0), 1)
+# cv2.imshow("Embroidery Preview", canvas)
+# cv2.imwrite("preview.png", canvas)
+# cv2.waitKey(0)
 
 # Save Results
 write_dst(pattern, str(path.with_suffix(".dst")))

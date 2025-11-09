@@ -7,7 +7,7 @@ from pyembroidery import *
 from pathlib import Path
 
 # === Parameters ===
-INPUT_IMAGE = "logo.png"
+INPUT_IMAGE = "logo.bmp"
 STITCH_SPACING = 2.0  # mm equivalent in stitch units
 COLOR_TOLERANCE = 20  # for color segmentation
 
@@ -19,7 +19,7 @@ if image is None:
     raise FileNotFoundError("Cannot read image file.")
 
 # Resize for smaller stitch count
-scale = 400 / max(image.shape[:2])
+scale = 512 / max(image.shape[:2])
 image = cv2.resize(image, (0, 0), fx=scale, fy=scale)
 
 # Convert to LAB for better color clustering
@@ -27,7 +27,7 @@ lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
 pixels = lab.reshape(-1, 3)
 
 # === Step 2. Cluster colors (segment the image) ===
-n_colors = 8  # adjust as needed
+n_colors = 3  # adjust as needed
 _, labels, centers = cv2.kmeans(
     np.float32(pixels),
     n_colors,
@@ -91,7 +91,7 @@ write_pec(pattern, str(path.with_suffix(".pec")))
 write_pes(pattern, str(path.with_suffix(".pes")))
 write_exp(pattern, str(path.with_suffix(".exp")))
 write_vp3(pattern, str(path.with_suffix(".vp3")))
-write_jef(pattern, str(path.with_suffix(".jef")))
+# write_jef(pattern, str(path.with_suffix(".jef")))
 write_u01(pattern, str(path.with_suffix(".u01")))
 write_csv(pattern, str(path.with_suffix(".csv")))
 # write_json(pattern, str(path.with_suffix(".json")))
