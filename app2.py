@@ -3,15 +3,86 @@ import numpy as np
 from skimage.morphology import skeletonize
 from pyembroidery import *
 from pathlib import Path
+from PIL import Image
+
+def wu_quantize_image0(input_path, output_path, colors=8):
+    """
+    Quantizes an image using the optimized Wu's algorithm implementation
+    in Pillow and saves the result.
+    """
+    try:
+        # Open the image
+        img = Image.open(input_path).convert("RGB")
+
+        # 1. Quantize the image
+        # The 'method' parameter is key here. Using 0/Image.Resample.FASTOCTREE
+        # activates the optimized octree/Wu's quantization method.
+        # Note: Pillow often uses a hybrid approach, but this setting
+        # represents the highest quality quantization available in the library.
+        quantized_img = img.quantize(
+            colors=colors,
+            method=Image.Quantize.FASTOCTREE
+        )
+
+        # 2. Save the result
+        quantized_img.save(output_path)
+
+        print(f"Image successfully quantized to {colors} colors and saved to {output_path}")
+        print(f"Original mode: {img.mode}, Quantized mode: {quantized_img.mode}")
+
+    except FileNotFoundError:
+        print(f"Error: Input file not found at {input_path}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+def wu_quantize_image(image, colors=8):
+    """
+    Quantizes an image using the optimized Wu's algorithm implementation
+    in Pillow and saves the result.
+    """
+    img = cv2_to_pil(image)
+
+    # 1. Quantize the image
+    # The 'method' parameter is key here. Using 0/Image.Resample.FASTOCTREE
+    # activates the optimized octree/Wu's quantization method.
+    # Note: Pillow often uses a hybrid approach, but this setting
+    # represents the highest quality quantization available in the library.
+    quantized_img = img.quantize(
+        colors=colors,
+        method=Image.Quantize.FASTOCTREE
+    )
+
+    # 2. Save the result
+    return pil_to_cv2(quantized_img)
+
+# 1. OpenCV to PIL (Starting with an image loaded by OpenCV)
+def cv2_to_pil(cv_img):
+    """Converts a BGR OpenCV NumPy array to a RGB PIL Image object."""
+    # Convert BGR (OpenCV standard) to RGB (PIL standard)
+    img_rgb = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+    # Create PIL Image from the array
+    pil_img = Image.fromarray(img_rgb)
+    return pil_img
+
+# 2. PIL to OpenCV (Starting with an image loaded by PIL)
+def pil_to_cv2(pil_img):
+    """Converts an RGB PIL Image object to a BGR OpenCV NumPy array."""
+    # Convert PIL Image object to NumPy array (it will be in RGB)
+    cv_img_rgb = np.array(pil_img)
+    # Convert RGB array to BGR (OpenCV standard)
+    cv_img_bgr = cv2.cvtColor(cv_img_rgb, cv2.COLOR_RGB2BGR)
+    return cv_img_bgr
 
 # === Parameters ===
-INPUT_IMAGE = "logo.bmp"
+INPUT_IMAGE = "logo0.bmp"
 THRESHOLD = 127
 STITCH_SPACING = 1.0  # distance between stitches
 SATIN_WIDTH = 4.0     # width of satin band
 DESIGN_WIDTH = 512
 
 path = Path(INPUT_IMAGE)
+
+wu_quantize_image(INPUT_IMAGE, str(path.with_suffix(".q.png")), colors=8)
 
 # === Step 1. Load and preprocess ===
 img = cv2.imread(INPUT_IMAGE)
