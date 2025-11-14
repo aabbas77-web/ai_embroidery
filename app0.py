@@ -5,6 +5,45 @@ import numpy as np
 # from pyembroidery import EmbConstant
 from pyembroidery import *
 from pathlib import Path
+from PIL import Image
+
+def wu_quantize_image(image, colors=8):
+    """
+    Quantizes an image using the optimized Wu's algorithm implementation
+    in Pillow and saves the result.
+    """
+    img = cv2_to_pil(image)
+
+    # 1. Quantize the image
+    # The 'method' parameter is key here. Using 0/Image.Resample.FASTOCTREE
+    # activates the optimized octree/Wu's quantization method.
+    # Note: Pillow often uses a hybrid approach, but this setting
+    # represents the highest quality quantization available in the library.
+    quantized_img = img.quantize(
+        colors=colors,
+        method=Image.Quantize.FASTOCTREE
+    )
+
+    # 2. Save the result
+    return pil_to_cv2(quantized_img)
+
+# 1. OpenCV to PIL (Starting with an image loaded by OpenCV)
+def cv2_to_pil(cv_img):
+    """Converts a BGR OpenCV NumPy array to a RGB PIL Image object."""
+    # Convert BGR (OpenCV standard) to RGB (PIL standard)
+    img_rgb = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+    # Create PIL Image from the array
+    pil_img = Image.fromarray(img_rgb)
+    return pil_img
+
+# 2. PIL to OpenCV (Starting with an image loaded by PIL)
+def pil_to_cv2(pil_img):
+    """Converts an RGB PIL Image object to a BGR OpenCV NumPy array."""
+    # Convert PIL Image object to NumPy array (it will be in RGB)
+    cv_img_rgb = np.array(pil_img)
+    # Convert RGB array to BGR (OpenCV standard)
+    cv_img_bgr = cv2.cvtColor(cv_img_rgb, cv2.COLOR_RGB2BGR)
+    return cv_img_bgr
 
 # === Parameters ===
 INPUT_IMAGE = "logo.bmp"
