@@ -82,12 +82,12 @@ DESIGN_WIDTH = 512
 
 path = Path(INPUT_IMAGE)
 
-wu_quantize_image(INPUT_IMAGE, str(path.with_suffix(".q.png")), colors=8)
-
 # === Step 1. Load and preprocess ===
 img = cv2.imread(INPUT_IMAGE)
 if img is None:
     raise FileNotFoundError("Cannot read image file.")
+
+img = wu_quantize_image(img,  colors=8)
 
 # Resize for smaller stitch count
 scale = DESIGN_WIDTH / max(img.shape[:2])
