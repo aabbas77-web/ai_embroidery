@@ -28,7 +28,8 @@ def vectorize_image_wu(image_path, n_colors=8, line_distance=5, hatch_angle=-45.
                        epsilon_factor_outer=0.01, epsilon_factor_hole=0.04):
     # 1. Load Image and Quantize
     image = cv2.imread(image_path)
-    if image is None: return
+    if image is None:
+        return
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     h, w, d = image_rgb.shape
     pixels = image_rgb.reshape((-1, d))
@@ -161,7 +162,9 @@ def vectorize_image_wu(image_path, n_colors=8, line_distance=5, hatch_angle=-45.
     print("Processing complete. Results saved to 'output_final_optimized.svg'")
     return quantized_image, color_palette
 
+
 # Example Usage:
 # INPUT_IMAGE = "logo0.bmp"
 INPUT_IMAGE = "Mouse01.bmp"
-vectorize_image_wu(INPUT_IMAGE, n_colors=15, hatch_angle=45.0, line_distance=3, stroke_thickness=0.5, epsilon_factor_outer=0.001, epsilon_factor_hole=0.002)
+vectorize_image_wu(INPUT_IMAGE, n_colors=15, hatch_angle=45.0, line_distance=3, stroke_thickness=0.5,
+                   epsilon_factor_outer=0.001, epsilon_factor_hole=0.002)
